@@ -70,9 +70,16 @@ class MySQLModeler{
 			// Get column definitions
 			let columnString = "";
 			let primaryKeyColumn = "";
+			let counter = 0;
 			for (let column of table.columns){
 				let columnDefinition = this.getColumnDefinitionString(column);
 				columnString += `\`${column.name}\` ${columnDefinition}`;
+
+				if (counter < table.columns.length - 1){
+					columnString += ", ";
+				}
+
+				++counter;
 
 				if ("isPrimaryKey" in column){
 					if (column.isPrimaryKey === true){
@@ -81,21 +88,19 @@ class MySQLModeler{
 				}
 			}
 
+			let primaryKeyString = "";
+
+			if (primaryKeyColumn !== ""){
+				primaryKeyString = `, PRIMARY KEY (\`${primaryKeyColumn}\`)`;
+			}
+
 			await this.connection.query(`
 				CREATE TABLE \`${table.name}\`
-				(${columnString})
+				(${columnString}${primaryKeyString})
 				ENGINE = ${table.engine}
 				DEFAULT CHARACTER SET = ${table.charset}
 				COLLATE = ${table.collation}
 			`);
-
-			if (primaryKeyColumn !== ""){
-				await this.connection.query(`
-					ALTER TABLE \`${table.name}\`
-					DROP PRIMARY KEY,
-					ADD PRIMARY KEY(\`${primaryKeyColumn}\`)
-				`);
-			}
 		}
 	}
 
@@ -107,7 +112,7 @@ class MySQLModeler{
 	getColumnDefinitionString(column){
 		let sqlNullString = ("isNull" in column && column.isNull) ? "NULL" : "NOT NULL";
 		let defaultValue;
-		let autoIncrement = ("autoIncrement" in column && column.autoIncrement) ? " AUTO_INCREMENT" : "";
+		let autoIncrement = ("autoIncrement" in column && column.autoIncrement === true) ? " AUTO_INCREMENT" : "";
 
 		if ("defaultValue" in column){
 			defaultValue = "DEFAULT ";
@@ -121,9 +126,9 @@ class MySQLModeler{
 		}
 
 		if (defaultValue !== undefined){
-			return `${column.type} ${sqlNullString} ${defaultValue} ${autoIncrement}`;
+			return `${column.type} ${sqlNullString} ${defaultValue}${autoIncrement}`;
 		}else{
-			return `${column.type} ${sqlNullString} ${autoIncrement}`;
+			return `${column.type} ${sqlNullString}${autoIncrement}`;
 		}
 	}
 
