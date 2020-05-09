@@ -37,6 +37,11 @@ class MySQLModeler{
 					let columnDefinition = this.getColumnDefinitionString(column);
 
 					if ("isPrimaryKey" in column){
+
+						if ("isIndex" in column && column.isIndex){
+							throw "Cannot set a primary key an an index";
+						}
+
 						if (column.isPrimaryKey){
 							primaryKeyToBeSet = column.name;
 						}
@@ -46,6 +51,24 @@ class MySQLModeler{
 						ALTER TABLE \`${table.name}\`
 						CHANGE COLUMN \`${column.name}\` \`${column.name}\` ${columnDefinition}
 					`);
+
+					if ("isIndex" in column && column.isIndex){
+						// Make the index
+						if (existingColumn.Key !== "MUL"){
+							await this.connection.query(`
+								ALTER TABLE \`${table.name}\`
+								ADD INDEX (\`${column.name}\`)
+							`);
+						}
+					}else if ("isIndex" in column && column.isIndex === false){
+						if (existingColumn.Key === "MUL"){
+							// Drop the index
+							await this.connection.query(`
+								ALTER TABLE \`${table.name}\`
+								DROP INDEX \`${column.name}\`
+							`);
+						}
+					}
 				}
 			}
 
@@ -71,6 +94,7 @@ class MySQLModeler{
 			let columnString = "";
 			let primaryKeyColumn = "";
 			let counter = 0;
+			let indices = []; // Column names to be indices
 			for (let column of table.columns){
 				let columnDefinition = this.getColumnDefinitionString(column);
 				columnString += `\`${column.name}\` ${columnDefinition}`;
@@ -84,6 +108,12 @@ class MySQLModeler{
 				if ("isPrimaryKey" in column){
 					if (column.isPrimaryKey === true){
 						primaryKeyColumn = column.name;
+					}
+				}
+
+				if ("isIndex" in column){
+					if (column.isIndex){
+						indices.push(column.name);
 					}
 				}
 			}
@@ -101,6 +131,25 @@ class MySQLModeler{
 				DEFAULT CHARACTER SET = ${table.charset}
 				COLLATE = ${table.collation}
 			`);
+
+			// Add indices
+			if (indices.length > 0){
+				let indexString = "";
+				let indexCounter = 0;
+				for (let indexName of indices){
+					indexString += `\`${indexName}\``
+
+					if (indexCounter < indices.length - 1){
+						indexString += ", ";
+					}
+					++indexCounter;
+				}
+
+				await this.connection.query(`
+					ALTER TABLE \`${table.name}\`
+					ADD INDEX (${indexString})
+				`);
+			}
 		}
 	}
 
@@ -171,7 +220,7 @@ class MySQLModeler{
 		}else{
 			// The 0th result of the columnsResult is the column's row
 			// It has these keys
-			// Field, Type (ie, varchar(128)), Null (string YES or NO), Key (string PRI), Default (value or null)
+			// Field, Type (ie, varchar(128)), Null (string YES or NO), Key (string PRI/MUL/UNI), Default (value or null)
 			// and Extra (ie, auto_increment)
 			return columnsResult[0];
 		}
