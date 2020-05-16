@@ -88,6 +88,24 @@ class MySQLModeler{
 				DEFAULT CHARACTER SET = ${table.charset}
 				COLLATE = ${table.collation}
 			`);
+
+			// Remove columns that exist but are no longer in the model
+			let allExistingColumns = await this.getAllExistingColumns(table.name);
+			let allModeledColumns = [];
+
+			for (let column of table.columns){
+				allModeledColumns.push(column.name);
+			}
+
+			for (let columnName of allExistingColumns){
+				if (allModeledColumns.find(element => element === columnName) === undefined){
+					// Drop the column
+					await this.connection.query(`
+						ALTER TABLE \`${table.name}\`
+						DROP COLUMN \`${columnName}\`
+					`);
+				}
+			}
 		}else{
 			// Table doesn't exist, create it
 			// Get column definitions
@@ -224,6 +242,23 @@ class MySQLModeler{
 			// and Extra (ie, auto_increment)
 			return columnsResult[0];
 		}
+	}
+
+	/**
+	* Gets all existing column names from a table
+	* @param {string} tableName
+	* @param {string} columnName
+	* @return {object|null}
+	*/
+	async getAllExistingColumns(tableName){
+		const [rows, fields] = await this.connection.execute(`SHOW COLUMNS FROM \`${tableName}\``);
+		const columnNames = [];
+
+		for (let row of rows){
+			columnNames.push(row.Field);
+		}
+
+		return columnNames;
 	}
 
 	/**
